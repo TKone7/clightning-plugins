@@ -92,7 +92,7 @@ def funds(unit=None, plugin=None):
     }
 
 
-@plugin.method("init")
+@plugin.init()
 def init(options, configuration, plugin):
     global rpc_interface
     plugin.log("start initialization of the funds plugin", level="debug")
