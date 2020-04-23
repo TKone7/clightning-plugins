@@ -56,7 +56,7 @@ unit_divisor = {
 
 
 @plugin.method("funds")
-def funds(unit=None, plugin=None):
+def funds(plugin=None, unit=None):
     """Lists the total funds the lightning node owns off- and onchain in {unit}.
 
     {unit} can take the following values:
