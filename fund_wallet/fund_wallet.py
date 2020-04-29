@@ -36,8 +36,7 @@ def fundwithfiat(plugin, amount, iban):
     # unit = 'sat'
     # if amount[-3:] == 'sat' or amount[-4:] == 'sats' or amount[-1:] == 's' or 'satoshis' in amount or 'satoshi' in amount:
     #     unit = 'sat'
-    if len(iban) != 21:
-        return 'IBAN has not a valid length (21), but {}'.format(len(iban))
+    
     if not isinstance(amount, int) or amount <= int(0):
         return 'Amount must be an integer satoshi value greater than zero'
 
