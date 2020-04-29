@@ -5,3 +5,4 @@ hkdf
 #pylightning
 #pbkdf2
 pycoin
+bitcoin-utils
