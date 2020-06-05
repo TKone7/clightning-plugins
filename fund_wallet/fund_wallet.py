@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
-import hashlib, requests
+import hashlib, requests, json
 from hkdf import Hkdf
 from os.path import expanduser, join
+from os import listdir
 from pycoin.symbols.btc import network
 
 from bitcoinutils.script import Script
@@ -28,15 +29,38 @@ def init(options, configuration, plugin):
     rpc_interface = LightningRpc(path)
     plugin.log('funding plugin successfully initialezed')
 
+@plugin.method('bityorders')
+def list_bityorders(plugin, order_id=None):
+    """Lists the previously created orders on bity. Can be filtered with {order_id}
+    """
+    order_files = [e for e in listdir() if e[-5:] == '.json']
+    if len(order_files) == 0:
+        return 'There are no previous orders to look up.'
+    orders = []
+    for order_file in order_files:
+        if not order_id or order_file[:-5] == order_id:
+            with open(order_file, 'r', encoding='utf-8') as f:
+                order = json.load(f)
+                response = requests.get(base_url + '/v2/orders/' + order['id'], cookies = {'sessionid': order['sessionid']})
+                if response.status_code != 200:
+                    continue
+                orders.append(response.json())
+
+    if order_id:
+        return orders[0] if len(orders) == 1 else 'No order with the given id found.'
+    else:
+        # print short overview
+        return [{'id': order['id'], 'timestamp_awaiting_payment_since': order['timestamp_awaiting_payment_since']} for order in orders]
 
 @plugin.method('fundwithfiat')
 def fundwithfiat(plugin, amount, iban):
-    """Add description {amount} {iban}.
+    """Creates a new buy order at Bity over the {amount} in satoshi, payable by {iban}.
+    This works without registration or any KYC because during the process we provide proof of ownership by signing with the private key.
     """
     # unit = 'sat'
     # if amount[-3:] == 'sat' or amount[-4:] == 'sats' or amount[-1:] == 's' or 'satoshis' in amount or 'satoshi' in amount:
     #     unit = 'sat'
-    
+
     if not isinstance(amount, int) or amount <= int(0):
         return 'Amount must be an integer satoshi value greater than zero'
 
@@ -79,7 +103,13 @@ def fundwithfiat(plugin, amount, iban):
         return errors[0]
     msg = response.json()['message_to_sign']['body']
     sign_url = response.json()['message_to_sign']['signature_submission_url']
+    order_id = response.json()['id']
     plugin.log('need to sign the received msg and send it here {}'.format(sign_url), level="info")
+
+    # store order details together with cookies
+    dumpdata = dict()
+    dumpdata.update(cookies)
+    dumpdata['id'] = order_id
 
     # sign the challenge received from bity
     sig = sign_message(priv_key, msg)
@@ -98,10 +128,16 @@ def fundwithfiat(plugin, amount, iban):
         return errors[0]
 
     input = response.json()['input']
+    output = response.json()['output']
     payment_details = response.json()['payment_details']
     price_breakdown = response.json()['price_breakdown']
-    payment_details.update(input)
+    # store detail to file for later reuse
+    with open(str(order_id) + '.json', 'w', encoding='utf-8') as f:
+        json.dump(dumpdata, f, ensure_ascii=False, indent=4)
+
     return {
+        'id': order_id,
+        'input': input,
         'payment_details': payment_details,
         'price_breakdown': price_breakdown
     }
@@ -113,7 +149,6 @@ def get_priv_key(address):
     salt = bytes([0]) or b'\x00'
     bip32_seed = Hkdf(salt, hsm_secret, hash=hashlib.sha256).expand(b'bip32 seed')
     master = network.keys.bip32_seed(bip32_seed)
-
     index = 0
     while True:
         # derive an index
